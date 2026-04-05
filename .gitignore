@@ -1,0 +1,45 @@
+# Data
+data/
+*.parquet
+
+# Model artifacts
+models/*.pkl
+models/metadata.json
+
+# Feature pipeline artifacts
+features/fitted_pipeline.pkl
+
+# Monitoring
+monitoring/prediction_log.jsonl
+monitoring/reports/
+
+# Drift
+drift/baseline_stats.json
+drift/reports/
+
+# Logs
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

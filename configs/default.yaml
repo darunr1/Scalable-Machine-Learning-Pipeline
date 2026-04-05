@@ -1,0 +1,94 @@
+# =============================================================================
+# Scalable ML Pipeline — Default Configuration
+# =============================================================================
+
+# --- Data Ingestion ---
+ingestion:
+  api:
+    base_url: "https://archive-api.open-meteo.com/v1/archive"
+    latitude: 40.7128
+    longitude: -74.0060
+    hourly_variables:
+      - temperature_2m
+      - relative_humidity_2m
+      - dew_point_2m
+      - apparent_temperature
+      - pressure_msl
+      - surface_pressure
+      - precipitation
+      - rain
+      - snowfall
+      - cloud_cover
+      - wind_speed_10m
+      - wind_direction_10m
+      - wind_gusts_10m
+    timezone: "America/New_York"
+  data_dir: "data/raw"
+  log_file: "data/ingestion_log.json"
+
+# --- Feature Engineering ---
+features:
+  target_column: "temperature_2m"
+  lag_features: [1, 2, 3, 6, 12, 24]
+  rolling_windows: [3, 6, 12, 24]
+  cyclical_features: ["hour"]
+  numerical_features:
+    - relative_humidity_2m
+    - dew_point_2m
+    - apparent_temperature
+    - pressure_msl
+    - surface_pressure
+    - precipitation
+    - rain
+    - snowfall
+    - cloud_cover
+    - wind_speed_10m
+    - wind_direction_10m
+    - wind_gusts_10m
+  pipeline_artifact: "features/fitted_pipeline.pkl"
+
+# --- Training ---
+training:
+  test_size: 0.2
+  cv_folds: 5
+  model_type: "RandomForestRegressor"
+  param_grid:
+    n_estimators: [50, 100, 200]
+    max_depth: [10, 20, 30, null]
+    min_samples_split: [2, 5, 10]
+    min_samples_leaf: [1, 2, 4]
+  scoring: "neg_mean_absolute_error"
+  random_state: 42
+
+# --- Model Registry ---
+registry:
+  model_dir: "models"
+  metadata_file: "models/metadata.json"
+
+# --- API ---
+api:
+  host: "0.0.0.0"
+  port: 8000
+
+# --- Monitoring ---
+monitoring:
+  prediction_log: "monitoring/prediction_log.jsonl"
+  reports_dir: "monitoring/reports"
+
+# --- Drift Detection ---
+drift:
+  ks_threshold: 0.05
+  check_features:
+    - temperature_2m
+    - relative_humidity_2m
+    - pressure_msl
+    - wind_speed_10m
+  baseline_file: "drift/baseline_stats.json"
+  reports_dir: "drift/reports"
+
+# --- Scheduler ---
+scheduler:
+  ingestion_interval: "daily"
+  monitoring_interval: "daily"
+  drift_check_interval: "daily"
+  retraining_interval: "weekly"
