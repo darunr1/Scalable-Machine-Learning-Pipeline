@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scalable-ml-pipeline"
+version = "1.0.0"
+description = "Production-style ML pipeline: ingestion → features → training → inference → monitoring → drift detection"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Darun"},
+]
+
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "scikit-learn>=1.3.0",
+    "scipy>=1.11.0",
+    "joblib>=1.3.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "pydantic>=2.0.0",
+    "streamlit>=1.28.0",
+    "requests>=2.31.0",
+    "pyarrow>=13.0.0",
+    "schedule>=1.2.0",
+    "pyyaml>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "httpx>=0.24.0",
+    "ruff>=0.1.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+]
+
+[project.scripts]
+ml-ingest = "ingestion.ingest:main"
+ml-train = "training.train:main"
+ml-retrain = "training.retrain:main"
+ml-drift = "drift.detector:run_drift_check"
+ml-monitor = "monitoring.monitor:run_monitoring_report"
+ml-schedule = "scheduler.runner:start_scheduler"
+
+[tool.setuptools.packages.find]
+include = [
+    "api*",
+    "configs*",
+    "dashboard*",
+    "drift*",
+    "features*",
+    "ingestion*",
+    "models*",
+    "monitoring*",
+    "scheduler*",
+    "training*",
+    "utils*",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"

@@ -2,6 +2,10 @@
 data/
 *.parquet
 
+# Experiments
+experiments/
+data/profiles/
+
 # Model artifacts
 models/*.pkl
 models/metadata.json

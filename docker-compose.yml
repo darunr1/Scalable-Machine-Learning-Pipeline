@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  # ── FastAPI Inference API ──────────────────────────────────────────────
+  api:
+    build: .
+    container_name: ml-pipeline-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./features/fitted_pipeline.pkl:/app/features/fitted_pipeline.pkl
+      - ./monitoring:/app/monitoring
+      - ./drift:/app/drift
+      - ./experiments:/app/experiments
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Streamlit Dashboard ────────────────────────────────────────────────
+  dashboard:
+    build: .
+    container_name: ml-pipeline-dashboard
+    command: streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./monitoring:/app/monitoring
+      - ./drift:/app/drift
+      - ./experiments:/app/experiments
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy

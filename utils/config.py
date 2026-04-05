@@ -7,6 +7,8 @@ import os
 import yaml
 from typing import Any, Optional
 
+from utils.validators import validate_config
+
 
 _config_cache: dict = {}
 
@@ -38,6 +40,13 @@ def load_config(config_path: Optional[str] = None) -> dict:
 
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
+
+    # Validate config against expected schema
+    try:
+        validate_config(config)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Config validation warning: {e}")
 
     _config_cache[config_path] = config
     return config

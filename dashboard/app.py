@@ -3,6 +3,8 @@ Streamlit Dashboard for the ML Pipeline.
 
 Displays:
     - Model performance over time
+    - Experiment tracking (run history)
+    - Feature importance analysis
     - Drift metrics
     - Feature distributions
     - Recent predictions
@@ -75,6 +77,34 @@ def load_monitoring_reports():
     return reports
 
 
+def load_experiment_runs():
+    """Load experiment tracking runs."""
+    runs_file = resolve_path("experiments/runs.jsonl")
+    if not os.path.exists(runs_file):
+        return []
+    runs = []
+    with open(runs_file, "r") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                runs.append(json.loads(line))
+    return list(reversed(runs))
+
+
+def load_feature_importance(model_version=None):
+    """Load the latest feature importance report."""
+    importance_dir = resolve_path("experiments/importance")
+    if not os.path.exists(importance_dir):
+        return None
+    pattern = f"importance_v{model_version}_*.json" if model_version \
+        else "importance_*.json"
+    files = sorted(glob.glob(os.path.join(importance_dir, pattern)))
+    if not files:
+        return None
+    with open(files[-1], "r") as f:
+        return json.load(f)
+
+
 # ── Page Config ─────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="ML Pipeline Dashboard",
@@ -88,7 +118,8 @@ st.markdown("Production monitoring for the weather prediction pipeline")
 # ── Sidebar ─────────────────────────────────────────────────────────────
 page = st.sidebar.radio(
     "Navigation",
-    ["📊 Model Performance", "🔍 Drift Metrics", "📈 Feature Distributions",
+    ["📊 Model Performance", "🧪 Experiments", "🔑 Feature Importance",
+     "🔍 Drift Metrics", "📈 Feature Distributions",
      "🎯 Predictions", "📦 Model Registry"],
 )
 
@@ -150,6 +181,121 @@ if page == "📊 Model Performance":
         prod_version = registry.get("production_version")
         if prod_version:
             st.success(f"🟢 Production model: **v{prod_version}**")
+
+# ════════════════════════════════════════════════════════════════════════
+# PAGE: Experiments
+# ════════════════════════════════════════════════════════════════════════
+elif page == "🧪 Experiments":
+    st.header("🧪 Experiment Tracking")
+
+    runs = load_experiment_runs()
+
+    if not runs:
+        st.info("No experiment runs recorded yet. Train a model to generate runs.")
+    else:
+        st.subheader(f"Total Runs: {len(runs)}")
+
+        # Summary metrics of best run
+        best_run = min(
+            [r for r in runs if "mae" in r.get("metrics", {})],
+            key=lambda r: r["metrics"]["mae"],
+            default=None,
+        )
+        if best_run:
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Best MAE", f"{best_run['metrics']['mae']:.4f}")
+            with col2:
+                st.metric("Best Run", best_run["run_id"])
+            with col3:
+                st.metric("Duration", f"{best_run['duration_seconds']:.1f}s")
+            with col4:
+                st.metric("Git Commit", best_run.get("git_commit", "N/A"))
+
+        # Runs table
+        st.subheader("Run History")
+        table_data = []
+        for run in runs:
+            metrics = run.get("metrics", {})
+            tags = run.get("tags", {})
+            table_data.append({
+                "Run ID": run["run_id"],
+                "Timestamp": run["timestamp"][:19],
+                "MAE": metrics.get("mae", "N/A"),
+                "RMSE": metrics.get("rmse", "N/A"),
+                "R²": metrics.get("r2", "N/A"),
+                "Duration (s)": run.get("duration_seconds", "N/A"),
+                "Model Version": tags.get("model_version", "N/A"),
+                "Git Commit": run.get("git_commit", "N/A"),
+            })
+        st.dataframe(pd.DataFrame(table_data), use_container_width=True)
+
+        # MAE over runs chart
+        mae_runs = [r for r in runs if "mae" in r.get("metrics", {})]
+        if len(mae_runs) > 1:
+            st.subheader("MAE Over Runs")
+            mae_chart = pd.DataFrame({
+                "Run": [r["run_id"] for r in reversed(mae_runs)],
+                "MAE": [r["metrics"]["mae"] for r in reversed(mae_runs)],
+            }).set_index("Run")
+            st.line_chart(mae_chart)
+
+        # Run details expander
+        for run in runs[:10]:
+            with st.expander(f"Run: {run['run_id']}"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write("**Parameters:**")
+                    st.json(run.get("params", {}))
+                with col2:
+                    st.write("**Metrics:**")
+                    st.json(run.get("metrics", {}))
+                st.write("**Tags:**")
+                st.json(run.get("tags", {}))
+
+# ════════════════════════════════════════════════════════════════════════
+# PAGE: Feature Importance
+# ════════════════════════════════════════════════════════════════════════
+elif page == "🔑 Feature Importance":
+    st.header("🔑 Feature Importance Analysis")
+
+    report = load_feature_importance()
+
+    if report is None:
+        st.info("No feature importance reports available. Train a model first.")
+    else:
+        st.subheader(f"Model v{report['model_version']} — {report['n_features']} features")
+
+        # Combined ranking bar chart
+        ranking = report.get("combined_ranking", [])
+        if ranking:
+            st.subheader("Combined Feature Ranking")
+            top_n = min(20, len(ranking))
+            rank_df = pd.DataFrame(ranking[:top_n])
+            chart_df = pd.DataFrame({
+                "Feature": rank_df["feature"],
+                "Rank Score": [top_n - r for r in range(top_n)],
+            }).set_index("Feature")
+            st.bar_chart(chart_df)
+
+        # Built-in importances
+        builtin = report.get("builtin_importance")
+        if builtin:
+            st.subheader("Tree-Based Importance (Gini)")
+            top_builtin = builtin[:15]
+            builtin_df = pd.DataFrame({
+                "Feature": [b["feature"] for b in top_builtin],
+                "Importance": [b["importance"] for b in top_builtin],
+            }).set_index("Feature")
+            st.bar_chart(builtin_df)
+
+        # Permutation importances
+        perm = report.get("permutation_importance")
+        if perm:
+            st.subheader("Permutation Importance")
+            top_perm = perm[:15]
+            perm_df = pd.DataFrame(top_perm)
+            st.dataframe(perm_df, use_container_width=True)
 
 # ════════════════════════════════════════════════════════════════════════
 # PAGE: Drift Metrics
@@ -330,5 +476,5 @@ elif page == "📦 Model Registry":
 
 # ── Footer ──────────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
-st.sidebar.markdown("**ML Pipeline Dashboard** v1.0")
+st.sidebar.markdown("**ML Pipeline Dashboard** v1.1")
 st.sidebar.markdown("Built with Streamlit")

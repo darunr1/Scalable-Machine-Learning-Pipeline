@@ -3,10 +3,13 @@ Model Training Pipeline.
 
 Handles the full training workflow:
     - Load data
+    - Data profiling
     - Feature engineering
     - Train/test split (time-based)
     - Cross-validation with TimeSeriesSplit
     - Hyperparameter tuning with GridSearchCV
+    - Feature importance analysis
+    - Experiment tracking
     - Save model, metrics, and config
     - Register in model registry
 """
@@ -25,7 +28,10 @@ from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from features.pipeline import FeaturePipeline
+from features.profiler import DataProfiler
+from features.importance import FeatureImportanceAnalyzer
 from models.registry import ModelRegistry
+from training.tracker import ExperimentTracker
 from utils.logger import get_logger
 from utils.config import load_config, resolve_path
 
@@ -90,9 +96,21 @@ def run_training(config: Optional[dict] = None) -> dict:
     logger.info("STARTING TRAINING PIPELINE")
     logger.info("=" * 60)
 
+    # Start experiment tracking
+    tracker = ExperimentTracker(experiment_name="training")
+    tracker.start_run()
+
     # 1. Load data
     df = load_latest_data(config)
     logger.info(f"Loaded {len(df)} rows of data")
+    tracker.log_data_info(df)
+
+    # 1b. Profile data
+    try:
+        profiler = DataProfiler()
+        profiler.profile(df, name="training_data")
+    except Exception as e:
+        logger.warning(f"Data profiling failed (non-fatal): {e}")
 
     # 2. Feature engineering
     pipeline = FeaturePipeline(config)
@@ -135,10 +153,20 @@ def run_training(config: Optional[dict] = None) -> dict:
     logger.info(f"Best params: {best_params}")
     logger.info(f"Best CV score: {grid_search.best_score_:.4f}")
 
+    # Log params to experiment tracker
+    tracker.log_params(best_params)
+    tracker.log_params({
+        "model_type": train_config["model_type"],
+        "cv_folds": train_config["cv_folds"],
+        "test_size": train_config["test_size"],
+    })
+
     # 5. Evaluate on test set
     y_pred = best_model.predict(X_test)
     metrics = compute_metrics(y_test.values, y_pred)
+    metrics["cv_score"] = round(float(grid_search.best_score_), 4)
     logger.info(f"Test metrics: {metrics}")
+    tracker.log_metrics(metrics)
 
     # 6. Save feature pipeline
     pipeline.save()
@@ -159,6 +187,23 @@ def run_training(config: Optional[dict] = None) -> dict:
         metrics=metrics,
         training_info=training_info,
     )
+
+    # 8. Feature importance analysis
+    try:
+        importance_analyzer = FeatureImportanceAnalyzer()
+        importance_report = importance_analyzer.analyze(
+            model=best_model,
+            X_test=X_test,
+            y_test=y_test,
+            model_version=version,
+        )
+        tracker.log_tag("top_feature", importance_report["combined_ranking"][0]["feature"])
+    except Exception as e:
+        logger.warning(f"Feature importance analysis failed (non-fatal): {e}")
+
+    # 9. End experiment tracking
+    tracker.log_tag("model_version", str(version))
+    tracker.end_run()
 
     logger.info("=" * 60)
     logger.info(f"TRAINING COMPLETE — Model v{version}")
